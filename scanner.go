@@ -9,6 +9,10 @@ import (
 // Default buffer size is set to 4K matching current standard block device block size.
 const DefaultBufferSize = 4 * 1024
 
+type Offset interface {
+	Offset() uint64
+}
+
 type scanner struct {
 	r       io.Reader
 	keyword []byte
@@ -53,11 +57,17 @@ func (s *scanner) Scan(callback func(r io.Reader) (cerr error)) (err error) {
 		s.Buffer(0)
 	}
 
-	offset := 0
-	bufferEnd := 0
+	var address uint64 // Offset since start of source reader.
+
+	offset := 0    // Offset into buffer
+	bufferEnd := 0 // Size of last read
 	rp := new(readerproxy)
+	rp.offset = func() (n uint64) {
+		return address + uint64(offset-len(s.keyword))
+	}
 
 	fillBuffer := func() (err error) {
+		address += uint64(bufferEnd)
 		bufferEnd, err = s.r.Read(s.buffer)
 		offset = 0
 		return
@@ -74,6 +84,7 @@ func (s *scanner) Scan(callback func(r io.Reader) (cerr error)) (err error) {
 
 	doCallback := func() {
 		keywordOffset := 0 // Allow for multiple (short receiver) reads from keyword
+
 		rp.reader = func(b []byte) (n int, e error) {
 			n = copy(b, s.keyword[keywordOffset:])
 			keywordOffset += n
@@ -109,3 +120,7 @@ func (s *scanner) Scan(callback func(r io.Reader) (cerr error)) (err error) {
 	}
 	return
 }
+
+// func Scan(r io.Reader, keyword []byte, callback func(r io.Reader) (cerr error)) (err error) {
+// 	return New(r, keyword).Scan(callback)
+// }
