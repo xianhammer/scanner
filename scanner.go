@@ -5,7 +5,9 @@ import (
 	"io"
 )
 
-const DefaultBufferSize = 10 * 1024
+// DefaultBufferSize used by the scanner.
+// Default buffer size is set to 4K matching current standard block device block size.
+const DefaultBufferSize = 4 * 1024
 
 type scanner struct {
 	r       io.Reader
@@ -15,13 +17,14 @@ type scanner struct {
 
 // New construct a new scanner object
 func New(r io.Reader, keyword []byte) (s *scanner) {
-	s = new(Scanner)
+	s = new(scanner)
 	s.r = r
 	s.keyword = make([]byte, len(keyword))
 	copy(s.keyword, keyword)
 	return
 }
 
+// Buffer reset buffer size. If size is below 1K default size is used.
 func (s *scanner) Buffer(size int) {
 	if size <= 1024 {
 		size = DefaultBufferSize
@@ -29,33 +32,48 @@ func (s *scanner) Buffer(size int) {
 	s.buffer = make([]byte, size)
 }
 
-// Scan return io.EOF if the underlying reader is at EOF.
-// If nil error is returned r contain a reader from the start of the keyword given.
-func (s *scanner) Scan(keyword []byte, callback func(r io.Reader) (cerr error)) (err error) {
+// Scan a source reader for keyword until non-nil is returned.
+//
+// For each found keyword call the callback returning a reader into the source reader.
+// If callback return an error, the scanner will stop and return that error.
+//
+// It is possible to read any number of bytes (including the keyword bytes) - even until
+// source reader return non-nil.
+// Keyword scan will resume after the last byte read by callback.
+//
+// E.g. source = [1, 2, 3, 4, 5, 1, 2, 3] and keyword = [3]
+// Callback receives:
+//    reader on [3, 4, 5, 1, 2, 3] -> callback read [3, 4] -> scanner resume on [5, 1, 2, 3]
+//    reader on [3]                -> callback read [3] and EOF -> scanner return EOF
+//
+// Notice that the reader handed to callback rely directly on the source reader and can
+// therefore not be used asynchronously.
+func (s *scanner) Scan(callback func(r io.Reader) (cerr error)) (err error) {
 	if s.buffer == nil {
 		s.Buffer(0)
 	}
 
 	offset := 0
 	bufferEnd := 0
+	rp := new(readerproxy)
+
 	fillBuffer := func() (err error) {
 		bufferEnd, err = s.r.Read(s.buffer)
 		offset = 0
 		return
 	}
 
-	doCallback := func() {
-		readBuffer := func(b []byte) (n int, e error) {
-			n = copy(b, s.buffer[offset:bufferEnd])
-			offset += n
-			if offset >= bufferEnd {
-				e = fillBuffer()
-			}
-			return
+	readBuffer := func(b []byte) (n int, e error) {
+		n = copy(b, s.buffer[offset:bufferEnd])
+		offset += n
+		if offset >= bufferEnd {
+			e = fillBuffer()
 		}
+		return
+	}
 
-		keywordOffset := 0 // Allow for mulitple (short receiver) reads from keyword
-		rp := new(readerproxy)
+	doCallback := func() {
+		keywordOffset := 0 // Allow for multiple (short receiver) reads from keyword
 		rp.reader = func(b []byte) (n int, e error) {
 			n = copy(b, s.keyword[keywordOffset:])
 			keywordOffset += n
@@ -68,9 +86,7 @@ func (s *scanner) Scan(keyword []byte, callback func(r io.Reader) (cerr error)) 
 		err = callback(rp)
 	}
 
-	err = fillBuffer()
-
-	for err == nil {
+	for err = fillBuffer(); err == nil; {
 		idx := bytes.Index(s.buffer[offset:bufferEnd], s.keyword)
 		if idx >= 0 {
 			offset += idx + len(s.keyword)
