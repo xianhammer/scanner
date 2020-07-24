@@ -7,7 +7,7 @@ import (
 
 // File scans a named file and call the callback when keyword is found.
 func File(filepath string, keyword []byte, callback func(address uint64, r io.Reader) error) (err error) {
-	return FileFrom(filepath, 0, keyword, callback)
+	return FileAf(filepath, 0, keyword, callback)
 }
 
 // FileAt scans a named file from the given offset and call the callback when keyword is found.
