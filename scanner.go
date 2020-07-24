@@ -9,19 +9,15 @@ import (
 // Default buffer size is set to 4K matching current standard block device block size.
 const DefaultBufferSize = 4 * 1024
 
-type Offset interface {
-	Offset() uint64
-}
-
-type scanner struct {
+type Scanner struct {
 	r       io.Reader
 	keyword []byte
 	buffer  []byte
 }
 
 // New construct a new scanner object
-func New(r io.Reader, keyword []byte) (s *scanner) {
-	s = new(scanner)
+func New(r io.Reader, keyword []byte) (s *Scanner) {
+	s = new(Scanner)
 	s.r = r
 	s.keyword = make([]byte, len(keyword))
 	copy(s.keyword, keyword)
@@ -29,7 +25,7 @@ func New(r io.Reader, keyword []byte) (s *scanner) {
 }
 
 // Buffer reset buffer size. If size is below 1K default size is used.
-func (s *scanner) Buffer(size int) {
+func (s *Scanner) Buffer(size int) {
 	if size <= 1024 {
 		size = DefaultBufferSize
 	}
@@ -40,6 +36,9 @@ func (s *scanner) Buffer(size int) {
 //
 // For each found keyword call the callback returning a reader into the source reader.
 // If callback return an error, the scanner will stop and return that error.
+//
+// The offset sent to the callback is the byte count since start of first byte read and to
+// start of current keyword.
 //
 // It is possible to read any number of bytes (including the keyword bytes) - even until
 // source reader return non-nil.
@@ -52,7 +51,7 @@ func (s *scanner) Buffer(size int) {
 //
 // Notice that the reader handed to callback rely directly on the source reader and can
 // therefore not be used asynchronously.
-func (s *scanner) Scan(callback func(r io.Reader) (cerr error)) (err error) {
+func (s *Scanner) Scan(callback func(offset uint64, r io.Reader) (cerr error)) (err error) {
 	if s.buffer == nil {
 		s.Buffer(0)
 	}
@@ -62,9 +61,6 @@ func (s *scanner) Scan(callback func(r io.Reader) (cerr error)) (err error) {
 	offset := 0    // Offset into buffer
 	bufferEnd := 0 // Size of last read
 	rp := new(readerproxy)
-	rp.offset = func() (n uint64) {
-		return address + uint64(offset-len(s.keyword))
-	}
 
 	fillBuffer := func() (err error) {
 		address += uint64(bufferEnd)
@@ -94,7 +90,7 @@ func (s *scanner) Scan(callback func(r io.Reader) (cerr error)) (err error) {
 			return
 		}
 
-		err = callback(rp)
+		err = callback(address+uint64(offset-len(s.keyword)), rp)
 	}
 
 	for err = fillBuffer(); err == nil; {
@@ -120,7 +116,3 @@ func (s *scanner) Scan(callback func(r io.Reader) (cerr error)) (err error) {
 	}
 	return
 }
-
-// func Scan(r io.Reader, keyword []byte, callback func(r io.Reader) (cerr error)) (err error) {
-// 	return New(r, keyword).Scan(callback)
-// }

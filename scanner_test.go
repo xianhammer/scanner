@@ -29,13 +29,14 @@ func TestScanner001(t *testing.T) {
 		t.Logf("Test %2d\n", testID)
 
 		inputReader := bytes.NewReader([]byte(test.input))
-		scanner := New(inputReader, keyword)
+		s := New(inputReader, keyword)
 		if test.bufferSize > 0 {
-			scanner.buffer = make([]byte, test.bufferSize)
+			s.buffer = make([]byte, test.bufferSize)
 		}
 
 		scannerBuffer := make([]byte, len(scannerExpect))
-		err := scanner.Scan(func(r io.Reader) (err error) {
+		err := s.Scan(func(address uint64, r io.Reader) (err error) {
+			// TODO Test address argument!
 			n, err := fillBuffer(t, r, scannerBuffer)
 			if err != test.expectErr {
 				t.Errorf("%2d: scanner: Expected error %v, got %v\n", testID, test.expectErr, err)
