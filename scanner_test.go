@@ -12,17 +12,18 @@ func TestScanner001(t *testing.T) {
 
 	tests := []struct {
 		bufferSize int
+		address    []int
 		input      string
 		expectErr  error
 	}{
-		{0, "The quick brown fox jumps over the lazy dog.", nil},
-		{17, "The quick brown fox jumps over the lazy dog.", nil},
-		{12, "The quick brown fo jumps over the lazy dog.", nil},
+		{0, []int{16}, "The quick brown fox jumps over the lazy dog.", nil},
+		{17, []int{16}, "The quick brown fox jumps over the lazy dog.", nil},
+		{12, []int{16}, "The quick brown fo jumps over the lazy dog.", nil},
 
-		{0, "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.", nil},
+		{0, []int{16, 61}, "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.", nil},
 		// {2, "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.", nil},
-		{17, "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.", nil},
-		{12, "The quick brown fo jumps over the lazy dog. The quick brown fox ", io.EOF},
+		{17, []int{16, 61}, "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.", nil},
+		{12, []int{16, 61}, "The quick brown fo jumps over the lazy dog. The quick brown fox ", io.EOF},
 	}
 
 	for testID, test := range tests {
@@ -34,9 +35,13 @@ func TestScanner001(t *testing.T) {
 			s.buffer = make([]byte, test.bufferSize)
 		}
 
+		idxAddress := 0
 		scannerBuffer := make([]byte, len(scannerExpect))
 		err := s.Scan(func(address uint64, r io.Reader) (err error) {
-			// TODO Test address argument!
+			if address != test.address[idxAddress] {
+				t.Errorf("%2d: scanner: Unexpected address argument (%d), expected %d\n", testID, address, test.address[idxAddress])
+			}
+
 			n, err := fillBuffer(t, r, scannerBuffer)
 			if err != test.expectErr {
 				t.Errorf("%2d: scanner: Expected error %v, got %v\n", testID, test.expectErr, err)

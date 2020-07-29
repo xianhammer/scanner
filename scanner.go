@@ -66,6 +66,9 @@ func (s *Scanner) Scan(callback func(offset uint64, r io.Reader) (cerr error)) (
 		address += uint64(bufferEnd)
 		bufferEnd, err = s.r.Read(s.buffer)
 		offset = 0
+		if bufferEnd <= 0 {
+			err = io.EOF
+		}
 		return
 	}
 
@@ -93,7 +96,7 @@ func (s *Scanner) Scan(callback func(offset uint64, r io.Reader) (cerr error)) (
 		err = callback(address+uint64(offset-len(s.keyword)), rp)
 	}
 
-	for err = fillBuffer(); err == nil; {
+	for err = fillBuffer(); err == nil && bufferEnd != 0; {
 		idx := bytes.Index(s.buffer[offset:bufferEnd], s.keyword)
 		if idx >= 0 {
 			offset += idx + len(s.keyword)
@@ -113,6 +116,9 @@ func (s *Scanner) Scan(callback func(offset uint64, r io.Reader) (cerr error)) (
 		if err == nil && hasPartial && bytes.HasPrefix(s.buffer, s.keyword[len(s.keyword)-idx:]) {
 			offset = len(s.keyword) - idx // Skip remaining part of compared keyword bytes
 		}
+	}
+	if bufferEnd == 0 {
+		err = io.EOF
 	}
 	return
 }
